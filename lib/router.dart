@@ -46,6 +46,32 @@ Router filmeRouter(DatabaseHelper db) {
     );
   });
 
+  // GET /filmes — Buscar por id 
+  router.get('/filmes/<id>', (Request request, String id) async {
+    final filmeId = int.tryParse(id);
+
+    if (filmeId == null) {
+      return Response(400, 
+        body: jsonEncode({'erro': 'O ID precisa ser um número válido.'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    final filme = db.getById(filmeId);
+
+    if (filme == null) {
+      return Response(404, 
+        body: jsonEncode({'erro': 'Filme com ID $filmeId não encontrado.'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    return Response.ok(
+      jsonEncode(filme.toJson()),
+      headers: {'Content-Type': 'application/json'},
+    );
+  });
+
   // POST /filmes — Criar novo filme
   router.post('/filmes', (Request request) async {
     try {
