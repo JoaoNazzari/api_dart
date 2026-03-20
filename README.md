@@ -2,7 +2,7 @@
 
 ## Sobre este projeto
 
-Neste guia você vai construir do zero uma **API REST completa** usando Dart puro com persistência em SQLite. A API gerencia **Tarefas** (CRUD) e inclui middleware de logging e CORS.
+Neste guia você vai construir do zero uma **API REST completa** usando Dart puro com persistência em SQLite. A API gerencia **Filmes** (CRUD) e inclui middlewares de logging, CORS e autenticação por token.
 
 **Stack utilizada:**
 
@@ -31,15 +31,15 @@ Neste guia você vai construir do zero uma **API REST completa** usando Dart pur
 Abra o terminal e execute:
 
 ```bash
-dart create -t console api_tarefas
-cd api_tarefas
+dart create -t console api_filmes
+cd api_filmes
 ```
 
 Agora edite o `pubspec.yaml` para adicionar as dependências:
 
 ```yaml
-name: api_tarefas
-description: API REST CRUD de Tarefas com Dart + SQLite
+name: api_filmes
+description: API REST CRUD de Filmes com Dart + SQLite
 version: 1.0.0
 
 environment:
@@ -64,57 +64,50 @@ dart pub get
 Organize o projeto assim:
 
 ```
-api_tarefas/
+api_filmes/
 ├── bin/
 │   └── server.dart          ← Ponto de entrada
 ├── lib/
 │   ├── database.dart        ← Conexão SQLite
-│   ├── middleware.dart       ← Logger e CORS
+│   ├── middleware.dart       ← Logger, CORS e Auth
 │   ├── router.dart           ← Rotas CRUD
 │   └── models/
-│       └── tarefa.dart       ← Modelo de dados
+│       └── filme.dart        ← Modelo de dados
 ├── pubspec.yaml
-└── tarefas.db                ← Banco (criado automaticamente)
+└── filmes.db                 ← Banco (criado automaticamente)
 ```
 
 ---
 
-## 3. Criando o Modelo (Tarefa)
+## 3. Criando o Modelo (Filme)
 
-Crie o arquivo `lib/models/tarefa.dart`:
+Crie o arquivo `lib/models/filme.dart`:
 
 ```dart
-class Tarefa {
+class Filme {
   final int? id;
   final String titulo;
-  final String descricao;
-  final bool concluida;
+  final String genero;
+  final String duracao;
+  final int faixa_etaria;
 
-  Tarefa({
+  Filme({
     this.id,
     required this.titulo,
-    required this.descricao,
-    this.concluida = false,
+    required this.genero,
+    required this.duracao,
+    required this.faixa_etaria,
   });
 
-  /// Cria uma Tarefa a partir de um Map (banco de dados)
-  factory Tarefa.fromMap(Map<String, dynamic> map) {
-    return Tarefa(
+  /// Cria um Filme a partir de um Map (banco de dados)
+  factory Filme.fromMap(Map<String, dynamic> map) {
+    return Filme(
       id: map['id'] as int?,
       titulo: map['titulo'] as String,
-      descricao: map['descricao'] as String,
-      concluida: (map['concluida'] as int) == 1,
+      genero: map['genero'] as String,
+      duracao: map['duracao'] as String,
+      faixa_etaria: map['faixa_etaria'] as int,
     );
-  }
-
-  /// Converte para Map (salvar no banco)
-  Map<String, dynamic> toMap() {
-    return {
-      if (id != null) 'id': id,
-      'titulo': titulo,
-      'descricao': descricao,
-      'concluida': concluida ? 1 : 0,
-    };
   }
 
   /// Converte para JSON (resposta da API)
@@ -122,8 +115,9 @@ class Tarefa {
     return {
       'id': id,
       'titulo': titulo,
-      'descricao': descricao,
-      'concluida': concluida,
+      'genero': genero,
+      'duracao': duracao,
+      'faixa_etaria': faixa_etaria,
     };
   }
 }
@@ -131,9 +125,8 @@ class Tarefa {
 
 **O que está acontecendo aqui?**
 
-- `fromMap` — converte um registro do banco (onde `concluida` é 0 ou 1) para um objeto Dart
-- `toMap` — converte para salvar no banco
-- `toJson` — converte para devolver na API (onde `concluida` é `true`/`false`)
+- `fromMap` — converte um registro do banco para um objeto Dart
+- `toJson` — converte para devolver na resposta da API
 
 ---
 
@@ -143,129 +136,106 @@ Crie o arquivo `lib/database.dart`:
 
 ```dart
 import 'package:sqlite3/sqlite3.dart';
-import 'models/tarefa.dart';
+import 'models/filme.dart';
 
 class DatabaseHelper {
   late Database _db;
 
-  /// Abre o banco e cria a tabela se não existir
   void initialize() {
-    _db = sqlite3.open('tarefas.db');
+    _db = sqlite3.open('filmes.db');
     _db.execute('''
-      CREATE TABLE IF NOT EXISTS tarefas (
+      CREATE TABLE IF NOT EXISTS filmes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         titulo TEXT NOT NULL,
-        descricao TEXT NOT NULL,
-        concluida INTEGER NOT NULL DEFAULT 0
-      )
+        genero TEXT NOT NULL,
+        duracao TEXT NOT NULL,
+        faixa_etaria INTEGER NOT NULL DEFAULT 0
+      );
     ''');
   }
 
-  /// Retorna todas as tarefas
-  List<Tarefa> getAll() {
-    final result = _db.select('SELECT * FROM tarefas ORDER BY id DESC');
-    return result.map((row) => Tarefa.fromMap(row)).toList();
+  /// Retorna todos os filmes
+  List<Filme> getAll() {
+    final result = _db.select('SELECT * FROM filmes ORDER BY id DESC');
+    return result.map((row) => Filme.fromMap(row)).toList();
   }
 
-  /// Filtra tarefas pelo status
-  List<Tarefa> getByStatus(bool concluida) {
+  /// Filtra por idade permitida E gênero ao mesmo tempo
+  List<Filme> getByAgeAndGenre(int idade, String genero) {
     final result = _db.select(
-      'SELECT * FROM tarefas WHERE concluida = ? ORDER BY id DESC',
-      [concluida ? 1 : 0],
+      'SELECT * FROM filmes WHERE faixa_etaria <= ? AND genero = ? ORDER BY id DESC',
+      [idade, genero],
     );
-    return result.map((row) => Tarefa.fromMap(row)).toList();
+    return result.map((row) => Filme.fromMap(row)).toList();
   }
 
-  /// Busca uma tarefa pelo ID
-  Tarefa? getById(int id) {
+  /// Retorna filmes permitidos para uma determinada idade
+  List<Filme> getAllowedByAge(int idadeUsuario) {
     final result = _db.select(
-      'SELECT * FROM tarefas WHERE id = ?', [id],
+      'SELECT * FROM filmes WHERE faixa_etaria <= ? ORDER BY faixa_etaria DESC',
+      [idadeUsuario],
     );
-    if (result.isEmpty) return null;
-    return Tarefa.fromMap(result.first);
+    return result.map((row) => Filme.fromMap(row)).toList();
   }
 
-  /// Insere uma nova tarefa
-  Tarefa insert(Tarefa tarefa) {
-    _db.execute(
-      'INSERT INTO tarefas (titulo, descricao, concluida) VALUES (?, ?, ?)',
-      [tarefa.titulo, tarefa.descricao, tarefa.concluida ? 1 : 0],
+  /// Retorna filmes filtrados pelo gênero
+  List<Filme> getByGenre(String genero) {
+    final result = _db.select(
+      'SELECT * FROM filmes WHERE genero = ? ORDER BY id DESC',
+      [genero],
     );
-    final id = _db.lastInsertRowId;
-    return getById(id)!;
+    return result.map((row) => Filme.fromMap(row)).toList();
   }
 
-  /// Atualiza uma tarefa existente
-  Tarefa? update(int id, Tarefa tarefa) {
-    if (getById(id) == null) return null;
-    _db.execute(
-      'UPDATE tarefas SET titulo = ?, descricao = ?, concluida = ? WHERE id = ?',
-      [tarefa.titulo, tarefa.descricao, tarefa.concluida ? 1 : 0, id],
-    );
-    return getById(id);
-  }
+  /// Busca um Filme pelo ID
+  Filme? getById(int id) { ... }
 
-  /// Deleta uma tarefa
-  bool delete(int id) {
-    if (getById(id) == null) return false;
-    _db.execute('DELETE FROM tarefas WHERE id = ?', [id]);
-    return true;
-  }
+  /// Insere um novo Filme
+  Filme insert(Filme filme) { ... }
+
+  /// Atualiza um Filme existente
+  Filme? update(int id, Filme filme) { ... }
+
+  /// Deleta um Filme pelo ID
+  bool delete(int id) { ... }
 }
 ```
 
 **Pontos importantes:**
 
-- O SQLite guarda booleanos como inteiros (0 = false, 1 = true)
-- `lastInsertRowId` retorna o ID auto-gerado
-- Usamos `?` nos queries para evitar SQL Injection
+- `faixa_etaria` é armazenado como inteiro — a query usa `<=` para retornar filmes permitidos para a idade informada
+- Usamos `?` nas queries para evitar SQL Injection
+- `lastInsertRowId` retorna o ID auto-gerado após um INSERT
 
 ---
 
 ## 5. Criando os Middlewares
 
-Crie o arquivo `lib/middleware.dart`:
+Crie o arquivo `lib/middleware.dart`. Este projeto possui três middlewares encadeados:
 
 ```dart
 import 'package:shelf/shelf.dart';
 
-/// Middleware de Logging
-Middleware logMiddleware() {
+/// Middleware de logging — registra método, URL e tempo de resposta
+Middleware logMiddleware() { ... }
+
+/// Middleware de CORS — permite que frontends em outros domínios consumam a API
+Middleware corsMiddleware() { ... }
+
+/// Middleware de Autenticação — protege todas as rotas com token fixo
+Middleware authMiddleware() {
   return (Handler innerHandler) {
     return (Request request) async {
-      final stopwatch = Stopwatch()..start();
-      final response = await innerHandler(request);
-      stopwatch.stop();
-
-      print(
-        '${request.method.padRight(6)} '
-        '${request.requestedUri.path} '
-        '→ ${response.statusCode} '
-        '(${stopwatch.elapsedMilliseconds}ms)',
-      );
-
-      return response;
-    };
-  };
-}
-
-/// Middleware de CORS
-Middleware corsMiddleware() {
-  return (Handler innerHandler) {
-    return (Request request) async {
-      final corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      };
-
-      // Responde preflight (OPTIONS) imediatamente
-      if (request.method == 'OPTIONS') {
-        return Response.ok('', headers: corsHeaders);
+      final authHeader = request.headers['Authorization'];
+      if (authHeader == '123') {
+        return await innerHandler(request);
+      } else {
+        return Response(
+          401,
+          body: 'Acesso negado: Token de autenticação inválido ou ausente.',
+          headers: {'Content-Type': 'text/plain'},
+        );
       }
-
-      final response = await innerHandler(request);
-      return response.change(headers: corsHeaders);
     };
   };
 }
@@ -274,7 +244,8 @@ Middleware corsMiddleware() {
 **O que cada middleware faz:**
 
 - **logMiddleware** — registra no console cada request com método, URL, status code e tempo de resposta
-- **corsMiddleware** — adiciona headers CORS em toda resposta, permitindo que frontends em outros domínios consumam a API. Também responde requisições `OPTIONS` (preflight) automaticamente.
+- **corsMiddleware** — adiciona headers CORS em toda resposta e responde requisições `OPTIONS` (preflight) automaticamente
+- **authMiddleware** — exige o header `Authorization: 123` em toda requisição; retorna `401` caso contrário
 
 ---
 
@@ -287,159 +258,43 @@ import 'dart:convert';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'database.dart';
-import 'models/tarefa.dart';
+import 'models/filme.dart';
 
-Router tarefaRouter(DatabaseHelper db) {
+Router filmeRouter(DatabaseHelper db) {
   final router = Router();
 
-  // GET /tarefas — Listar todas (com filtro opcional)
-  router.get('/tarefas', (Request request) {
-    final concluidaParam = request.requestedUri.queryParameters['concluida'];
+  // GET /filmes — Listar todos, com filtros opcionais por idade e/ou gênero
+  router.get('/filmes', (Request request) {
+    final params = request.requestedUri.queryParameters;
+    final idadeStr = params['idade'];
+    final genero = params['genero'];
 
-    List<Tarefa> tarefas;
-    if (concluidaParam != null) {
-      final concluida = concluidaParam.toLowerCase() == 'true';
-      tarefas = db.getByStatus(concluida);
+    List<Filme> filmes;
+
+    if (idadeStr != null && genero != null) {
+      filmes = db.getByAgeAndGenre(int.parse(idadeStr), genero);
+    } else if (idadeStr != null) {
+      filmes = db.getAllowedByAge(int.parse(idadeStr));
+    } else if (genero != null) {
+      filmes = db.getByGenre(genero);
     } else {
-      tarefas = db.getAll();
+      filmes = db.getAll();
     }
 
     return Response.ok(
-      jsonEncode(tarefas.map((t) => t.toJson()).toList()),
+      jsonEncode(filmes.map((f) => f.toJson()).toList()),
       headers: {'Content-Type': 'application/json'},
     );
   });
 
-  // GET /tarefas/<id> — Buscar por ID
-  router.get('/tarefas/<id>', (Request request, String id) {
-    final tarefaId = int.tryParse(id);
-    if (tarefaId == null) {
-      return Response(400,
-        body: jsonEncode({'erro': 'ID inválido'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
+  // POST /filmes — Criar novo filme
+  router.post('/filmes', (Request request) async { ... });
 
-    final tarefa = db.getById(tarefaId);
-    if (tarefa == null) {
-      return Response(404,
-        body: jsonEncode({'erro': 'Tarefa não encontrada'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
+  // PUT /filmes/<id> — Atualizar filme
+  router.put('/filmes/<id>', (Request request, String id) async { ... });
 
-    return Response.ok(
-      jsonEncode(tarefa.toJson()),
-      headers: {'Content-Type': 'application/json'},
-    );
-  });
-
-  // POST /tarefas — Criar nova tarefa
-  router.post('/tarefas', (Request request) async {
-    try {
-      final body = await request.readAsString();
-      final data = jsonDecode(body) as Map<String, dynamic>;
-
-      if (data['titulo'] == null || data['descricao'] == null) {
-        return Response(400,
-          body: jsonEncode({
-            'erro': 'Campos "titulo" e "descricao" são obrigatórios'
-          }),
-          headers: {'Content-Type': 'application/json'},
-        );
-      }
-
-      final novaTarefa = Tarefa(
-        titulo: data['titulo'] as String,
-        descricao: data['descricao'] as String,
-        concluida: data['concluida'] == true,
-      );
-
-      final criada = db.insert(novaTarefa);
-      return Response(201,
-        body: jsonEncode(criada.toJson()),
-        headers: {'Content-Type': 'application/json'},
-      );
-    } catch (e) {
-      return Response(400,
-        body: jsonEncode({'erro': 'JSON inválido: $e'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-  });
-
-  // PUT /tarefas/<id> — Atualizar tarefa
-  router.put('/tarefas/<id>', (Request request, String id) async {
-    final tarefaId = int.tryParse(id);
-    if (tarefaId == null) {
-      return Response(400,
-        body: jsonEncode({'erro': 'ID inválido'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-
-    try {
-      final body = await request.readAsString();
-      final data = jsonDecode(body) as Map<String, dynamic>;
-
-      if (data['titulo'] == null || data['descricao'] == null) {
-        return Response(400,
-          body: jsonEncode({
-            'erro': 'Campos "titulo" e "descricao" são obrigatórios'
-          }),
-          headers: {'Content-Type': 'application/json'},
-        );
-      }
-
-      final tarefaAtualizada = Tarefa(
-        titulo: data['titulo'] as String,
-        descricao: data['descricao'] as String,
-        concluida: data['concluida'] == true,
-      );
-
-      final resultado = db.update(tarefaId, tarefaAtualizada);
-      if (resultado == null) {
-        return Response(404,
-          body: jsonEncode({'erro': 'Tarefa não encontrada'}),
-          headers: {'Content-Type': 'application/json'},
-        );
-      }
-
-      return Response.ok(
-        jsonEncode(resultado.toJson()),
-        headers: {'Content-Type': 'application/json'},
-      );
-    } catch (e) {
-      return Response(400,
-        body: jsonEncode({'erro': 'JSON inválido: $e'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-  });
-
-  // DELETE /tarefas/<id> — Deletar tarefa
-  router.delete('/tarefas/<id>', (Request request, String id) {
-    final tarefaId = int.tryParse(id);
-    if (tarefaId == null) {
-      return Response(400,
-        body: jsonEncode({'erro': 'ID inválido'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-
-    final deletou = db.delete(tarefaId);
-    if (!deletou) {
-      return Response(404,
-        body: jsonEncode({'erro': 'Tarefa não encontrada'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-
-    return Response.ok(
-      jsonEncode({'mensagem': 'Tarefa $tarefaId deletada com sucesso'}),
-      headers: {'Content-Type': 'application/json'},
-    );
-  });
+  // DELETE /filmes/<id> — Deletar filme
+  router.delete('/filmes/<id>', (Request request, String id) { ... });
 
   return router;
 }
@@ -452,26 +307,23 @@ Router tarefaRouter(DatabaseHelper db) {
 Crie o arquivo `bin/server.dart`:
 
 ```dart
-import 'dart:io';
+import 'package:apidart/database.dart';
+import 'package:apidart/middleware.dart';
+import 'package:apidart/router.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
-import '../lib/router.dart';
-import '../lib/middleware.dart';
-import '../lib/database.dart';
 
 void main() async {
-  // Inicializa o banco de dados
   final db = DatabaseHelper();
   db.initialize();
   print('✅ Banco de dados SQLite inicializado');
 
-  // Pipeline: Middlewares → Router
   final handler = Pipeline()
       .addMiddleware(logMiddleware())
       .addMiddleware(corsMiddleware())
-      .addHandler(tarefaRouter(db));
+      .addMiddleware(authMiddleware())
+      .addHandler(filmeRouter(db));
 
-  // Inicia o servidor na porta 8080
   final server = await io.serve(handler, 'localhost', 8080);
   print('🚀 Servidor rodando em http://${server.address.host}:${server.port}');
 }
@@ -494,19 +346,41 @@ Saída esperada:
 
 ---
 
-## 9. Testando com Postman / Insomnia
+## 9. Autenticação
 
-### Criar uma tarefa (POST)
+Todas as rotas exigem o header `Authorization` com o valor `123`.
 
-- **Método:** POST
-- **URL:** `http://localhost:8080/tarefas`
-- **Header:** `Content-Type: application/json`
+Sem o header correto, a API retorna:
+
+```
+HTTP 401 — Acesso negado: Token de autenticação inválido ou ausente.
+```
+
+No Postman, adicione em **Headers**:
+
+| Key | Value |
+|-----|-------|
+| `Authorization` | `123` |
+
+---
+
+## 10. Testando com Postman / Insomnia
+
+> ⚠️ Lembre-se de incluir o header `Authorization: 123` em todas as requisições.
+
+### Criar um filme (POST)
+
+- **Método:** POST  
+- **URL:** `http://localhost:8080/filmes`  
+- **Headers:** `Content-Type: application/json`, `Authorization: 123`  
 - **Body (JSON):**
 
 ```json
 {
-  "titulo": "Estudar APIs REST",
-  "descricao": "Aprender os conceitos de REST com Dart"
+  "titulo": "Interestelar",
+  "genero": "Ficcao",
+  "duracao": "2h49min",
+  "faixa_etaria": 12
 }
 ```
 
@@ -515,77 +389,90 @@ Saída esperada:
 ```json
 {
   "id": 1,
-  "titulo": "Estudar APIs REST",
-  "descricao": "Aprender os conceitos de REST com Dart",
-  "concluida": false
+  "titulo": "Interestelar",
+  "genero": "Ficcao",
+  "duracao": "2h49min",
+  "faixa_etaria": 12
 }
 ```
 
-### Listar todas (GET)
+### Listar todos os filmes (GET)
 
-- **URL:** `http://localhost:8080/tarefas`
+- **URL:** `http://localhost:8080/filmes`
 
-### Filtrar por status (GET com Query Param)
+### Filtrar por idade (GET)
 
-- **URL:** `http://localhost:8080/tarefas?concluida=false`
+Retorna filmes com `faixa_etaria` menor ou igual à idade informada:
 
-### Buscar por ID (GET)
+- **URL:** `http://localhost:8080/filmes?idade=14`
 
-- **URL:** `http://localhost:8080/tarefas/1`
+### Filtrar por gênero (GET)
+
+- **URL:** `http://localhost:8080/filmes?genero=Acao`
+
+### Filtrar por idade e gênero (GET)
+
+- **URL:** `http://localhost:8080/filmes?idade=14&genero=Acao`
 
 ### Atualizar (PUT)
 
-- **Método:** PUT
-- **URL:** `http://localhost:8080/tarefas/1`
+- **Método:** PUT  
+- **URL:** `http://localhost:8080/filmes/1`  
 - **Body:**
 
 ```json
 {
-  "titulo": "Estudar APIs REST",
-  "descricao": "Conceitos aprendidos com sucesso!",
-  "concluida": true
+  "titulo": "Interestelar",
+  "genero": "Ficcao Cientifica",
+  "duracao": "2h49min",
+  "faixa_etaria": 12
 }
 ```
 
 ### Deletar (DELETE)
 
-- **Método:** DELETE
-- **URL:** `http://localhost:8080/tarefas/1`
+- **Método:** DELETE  
+- **URL:** `http://localhost:8080/filmes/1`
 
 **Resposta:**
 
 ```json
 {
-  "mensagem": "Tarefa 1 deletada com sucesso"
+  "mensagem": "Filme deletado com sucesso"
 }
 ```
 
 ---
 
-## 10. Testando com curl (Terminal)
+## 11. Testando com curl (Terminal)
 
 ```bash
-# Criar tarefa
-curl -X POST http://localhost:8080/tarefas \
+# Criar filme
+curl -X POST http://localhost:8080/filmes \
   -H "Content-Type: application/json" \
-  -d '{"titulo": "Primeira tarefa", "descricao": "Criada via curl"}'
+  -H "Authorization: 123" \
+  -d '{"titulo": "Interestelar", "genero": "Ficcao", "duracao": "2h49min", "faixa_etaria": 12}'
 
-# Listar todas
-curl http://localhost:8080/tarefas
+# Listar todos
+curl http://localhost:8080/filmes -H "Authorization: 123"
 
-# Filtrar concluídas
-curl "http://localhost:8080/tarefas?concluida=true"
+# Filtrar por idade
+curl "http://localhost:8080/filmes?idade=14" -H "Authorization: 123"
 
-# Buscar por ID
-curl http://localhost:8080/tarefas/1
+# Filtrar por gênero
+curl "http://localhost:8080/filmes?genero=Acao" -H "Authorization: 123"
+
+# Filtrar por idade e gênero
+curl "http://localhost:8080/filmes?idade=14&genero=Acao" -H "Authorization: 123"
 
 # Atualizar
-curl -X PUT http://localhost:8080/tarefas/1 \
+curl -X PUT http://localhost:8080/filmes/1 \
   -H "Content-Type: application/json" \
-  -d '{"titulo": "Tarefa atualizada", "descricao": "Agora com PUT", "concluida": true}'
+  -H "Authorization: 123" \
+  -d '{"titulo": "Interestelar", "genero": "Ficcao Cientifica", "duracao": "2h49min", "faixa_etaria": 12}'
 
 # Deletar
-curl -X DELETE http://localhost:8080/tarefas/1
+curl -X DELETE http://localhost:8080/filmes/1 -H "Authorization: 123"
 ```
 
 ---
@@ -594,23 +481,15 @@ curl -X DELETE http://localhost:8080/tarefas/1
 
 | Método | Rota | Descrição | Status |
 |--------|------|-----------|--------|
-| GET | `/tarefas` | Listar todas as tarefas | 200 |
-| GET | `/tarefas?concluida=true` | Filtrar por status | 200 |
-| GET | `/tarefas/<id>` | Buscar por ID | 200 / 404 |
-| POST | `/tarefas` | Criar nova tarefa | 201 / 400 |
-| PUT | `/tarefas/<id>` | Atualizar tarefa | 200 / 404 |
-| DELETE | `/tarefas/<id>` | Deletar tarefa | 200 / 404 |
+| GET | `/filmes` | Listar todos os filmes | 200 |
+| GET | `/filmes?idade=14` | Filtrar por faixa etária | 200 |
+| GET | `/filmes?genero=Acao` | Filtrar por gênero | 200 |
+| GET | `/filmes?idade=14&genero=Acao` | Filtrar por idade e gênero | 200 |
+| POST | `/filmes` | Criar novo filme | 201 / 400 |
+| PUT | `/filmes/<id>` | Atualizar filme | 200 / 404 |
+| DELETE | `/filmes/<id>` | Deletar filme | 200 / 404 |
 
----
-
-## Desafios para os alunos
-
-1. **Paginação** — Adicione query params `?page=1&limit=10` no GET
-2. **Busca por título** — Implemente `?titulo=estudar` com `LIKE` no SQL
-3. **Ordenação** — Adicione `?orderBy=titulo&order=asc`
-4. **Validação** — Não permita título vazio ou com menos de 3 caracteres
-5. **Autenticação** — Crie um middleware que verifica um token no header `Authorization`
-6. **Swagger** — Pesquise como gerar documentação OpenAPI para a API
+> Todos os endpoints exigem o header `Authorization: 123`.
 
 ---
 
