@@ -15,7 +15,7 @@ class DatabaseHelper {
         titulo TEXT NOT NULL,
         genero TEXT NOT NULL,
         duracao TEXT NOT NULL,
-        faixa_etaria INTEGER NOT NULL DEFAULT 0
+        faixaEtaria INTEGER NOT NULL DEFAULT 0
       );
     ''');
   }
@@ -29,7 +29,7 @@ class DatabaseHelper {
   /// Filtra por idade permitida E gênero ao mesmo tempo
   List<Filme> getByAgeAndGenre(int idade, String genero) {
     final result = _db.select(
-      'SELECT * FROM filmes WHERE faixa_etaria <= ? AND genero = ? ORDER BY id DESC',
+      'SELECT * FROM filmes WHERE faixaEtaria <= ? AND genero = ? ORDER BY id DESC',
       [idade, genero],
     );
     return result.map((row) => Filme.fromMap(row)).toList();
@@ -38,7 +38,7 @@ class DatabaseHelper {
   /// Retorna filmes permitidos para uma determinada idade
   List<Filme> getAllowedByAge(int idadeUsuario) {
     final result = _db.select(
-      'SELECT * FROM filmes WHERE faixa_etaria <= ? ORDER BY faixa_etaria DESC',
+      'SELECT * FROM filmes WHERE faixaEtaria <= ? ORDER BY faixaEtaria DESC',
       [idadeUsuario],
     );
     return result.map((row) => Filme.fromMap(row)).toList();
@@ -66,12 +66,12 @@ class DatabaseHelper {
   /// Insere um novo Filme e retorna ela com o ID gerado
   Filme insert(Filme filme) {
     _db.execute(
-      'INSERT INTO filmes (titulo, genero, duracao, faixa_etaria) VALUES (?, ?, ?, ?)',
+      'INSERT INTO filmes (titulo, genero, duracao, faixaEtaria) VALUES (?, ?, ?, ?)',
       [
         filme.titulo, 
         filme.genero, 
         filme.duracao, 
-        filme.faixa_etaria
+        filme.faixaEtaria
       ],
     );
     final id = _db.lastInsertRowId;
@@ -84,12 +84,12 @@ class DatabaseHelper {
     if (existing == null) return null;
 
     _db.execute(
-      'UPDATE filmes SET titulo = ?, genero = ?, duracao = ?, faixa_etaria = ? WHERE id = ?',
+      'UPDATE filmes SET titulo = ?, genero = ?, duracao = ?, faixaEtaria = ? WHERE id = ?',
       [
         filme.titulo, 
         filme.genero, 
         filme.duracao, 
-        filme.faixa_etaria, 
+        filme.faixaEtaria, 
         id
       ],
     );
@@ -107,6 +107,6 @@ class DatabaseHelper {
 
   /// Fecha a conexão com o banco
   void close() {
-    _db.dispose();
+    _db.close();
   }
 }

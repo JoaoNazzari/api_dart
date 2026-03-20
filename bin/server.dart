@@ -15,16 +15,18 @@ void main() async {
       .addMiddleware(logMiddleware())
       .addMiddleware(corsMiddleware())
       .addMiddleware(authMiddleware())
-      .addHandler(tarefaRouter(db));
+      .addHandler(filmeRouter(db).call);
 
   // Inicia o servidor
   final server = await io.serve(handler, 'localhost', 8080);
   print('🚀 Servidor rodando em http://${server.address.host}:${server.port}');
-  print('📋 Endpoints disponíveis:');
-  print('   GET    /tarefas         → Listar todas');
-  print('   GET    /tarefas/<id>    → Buscar por ID');
-  print('   POST   /tarefas         → Criar nova');
-  print('   PUT    /tarefas/<id>    → Atualizar');
-  print('   DELETE /tarefas/<id>    → Deletar');
-  print('   GET    /tarefas?concluida=true → Filtrar por status');
+  print('📋 Endpoints de Filmes disponíveis:');
+  print('   GET    /filmes                          → Listar todos');
+  print('   GET    /filmes/<id>                     → Buscar por Id');
+  print('   GET    /filmes?idade=14                 → Filtro por idade');
+  print('   GET    /filmes?genero=Acao              → Filtro por gênero');
+  print('   GET    /filmes?idade=14&genero=Acao     → Filtro por idade e gênero');
+  print('   POST   /filmes                          → Criar novo (Auth: 123)');
+  print('   PUT    /filmes/<id>                     → Atualizar');
+  print('   DELETE /filmes/<id>                     → Deletar');
 }

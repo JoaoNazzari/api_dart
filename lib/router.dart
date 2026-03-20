@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'database.dart';
-import 'models/filme.dart'; /
+import 'models/filme.dart'; 
 
 Router filmeRouter(DatabaseHelper db) {
   final router = Router();
@@ -52,9 +52,9 @@ Router filmeRouter(DatabaseHelper db) {
       final body = await request.readAsString();
       final data = jsonDecode(body) as Map<String, dynamic>; 
 
-      if (data['titulo'] == null || data['faixa_etaria'] == null) {
+      if (data['titulo'] == null || data['faixaEtaria'] == null) {
         return Response(400,
-          body: jsonEncode({'erro': 'Campos "titulo" e "faixa_etaria" são obrigatórios'}),
+          body: jsonEncode({'erro': 'Campos "titulo" e "faixaEtaria" são obrigatórios'}),
           headers: {'Content-Type': 'application/json'},
         );
       }
@@ -63,7 +63,7 @@ Router filmeRouter(DatabaseHelper db) {
         titulo: data['titulo'] as String,
         genero: data['genero'] as String,
         duracao: data['duracao'] as String,
-        faixa_etaria: data['faixa_etaria'] as int, 
+        faixaEtaria: data['faixaEtaria'] as int, 
       );
 
       final criada = db.insert(novoFilme);
@@ -94,7 +94,7 @@ Router filmeRouter(DatabaseHelper db) {
         titulo: data['titulo'] as String,
         genero: data['genero'] as String,
         duracao: data['duracao'] as String,
-        faixa_etaria: data['faixa_etaria'] as int,
+        faixaEtaria: data['faixaEtaria'] as int,
       );
 
       final resultado = db.update(filmeId, filmeEditado);
